@@ -1,0 +1,34 @@
+{
+  "model": {
+    "base_model_id": "runwayml/stable-diffusion-v1-5",
+    "condition_type": "canny",
+    "conditioning_scale": 1.0
+  },
+  "training": {
+    "learning_rate": 2e-4,
+    "batch_size": 8,
+    "num_epochs": 50,
+    "mixed_precision": true,
+    "gradient_accumulation_steps": 1,
+    "max_grad_norm": 1.0,
+    "prompt_dropout_rate": 0.5,
+    "warmup_steps": 100
+  },
+  "data": {
+    "image_size": 512,
+    "max_samples": 1000,
+    "augmentation": true,
+    "num_workers": 4
+  },
+  "logging": {
+    "log_every": 50,
+    "save_every": 500,
+    "use_wandb": false,
+    "project_name": "controlnet-fast"
+  },
+  "optimizations": {
+    "compile_model": true,
+    "dataloader_pin_memory": true,
+    "persistent_workers": true
+  }
+}

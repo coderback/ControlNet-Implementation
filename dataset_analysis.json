@@ -1,0 +1,70 @@
+{
+  "dataset_summary": {
+    "total_images": 10000,
+    "avg_resolution": "574x484",
+    "resolution_range": "200x145 to 640x640",
+    "avg_file_size_mb": "0.16",
+    "total_size_gb": "1.52"
+  },
+  "image_quality": {
+    "avg_brightness": "114.4",
+    "avg_contrast": "59.8",
+    "avg_saturation": "82.1",
+    "avg_sharpness": "2675.3"
+  },
+  "conditioning_analysis": {
+    "condition_type": "canny",
+    "avg_edge_density": "0.143",
+    "suitability_recommendations": [
+      "\u26a0\ufe0f  804 images have very low edge density (< 5%)",
+      "   Consider adding more images with clear object boundaries",
+      "\u26a0\ufe0f  86 images appear blurry",
+      "   Blurry images don't work well with Canny edge detection"
+    ]
+  },
+  "content_diversity": {
+    "top_categories": [
+      [
+        "people",
+        207
+      ],
+      [
+        "wildlife",
+        141
+      ],
+      [
+        "food",
+        135
+      ],
+      [
+        "vehicle",
+        126
+      ],
+      [
+        "animal",
+        117
+      ],
+      [
+        "room",
+        106
+      ],
+      [
+        "person",
+        94
+      ],
+      [
+        "kitchen",
+        64
+      ],
+      [
+        "interior",
+        63
+      ],
+      [
+        "truck",
+        58
+      ]
+    ],
+    "total_categories_detected": 37
+  }
+}

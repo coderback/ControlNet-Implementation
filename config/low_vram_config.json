@@ -1,0 +1,47 @@
+{
+  "model": {
+    "base_model_id": "runwayml/stable-diffusion-v1-5",
+    "condition_type": "canny",
+    "conditioning_scale": 1.0
+  },
+  "training": {
+    "learning_rate": 1e-4,
+    "batch_size": 1,
+    "num_epochs": 200,
+    "mixed_precision": true,
+    "gradient_accumulation_steps": 8,
+    "max_grad_norm": 1.0,
+    "prompt_dropout_rate": 0.5,
+    "warmup_steps": 500,
+    "gradient_checkpointing": true,
+    "cpu_offload": true
+  },
+  "data": {
+    "image_size": 256,
+    "max_samples": 1000,
+    "augmentation": false,
+    "num_workers": 0
+  },
+  "logging": {
+    "log_every": 50,
+    "save_every": 500,
+    "use_wandb": false,
+    "project_name": "controlnet-low-vram"
+  },
+  "scheduler": {
+    "type": "cosine",
+    "eta_min": 1e-7
+  },
+  "optimizer": {
+    "type": "adamw",
+    "weight_decay": 0.01,
+    "betas": [0.9, 0.999],
+    "eps": 1e-8
+  },
+  "memory_optimizations": {
+    "use_8bit_adam": true,
+    "offload_to_cpu": true,
+    "clear_cache_every_n_steps": 10,
+    "low_cpu_mem_usage": true
+  }
+}

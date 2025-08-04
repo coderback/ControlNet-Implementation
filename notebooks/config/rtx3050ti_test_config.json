@@ -1,0 +1,39 @@
+{
+  "model": {
+    "base_model_id": "runwayml/stable-diffusion-v1-5",
+    "condition_type": "canny",
+    "conditioning_scale": 1.0
+  },
+  "training": {
+    "learning_rate": 0.0001,
+    "batch_size": 1,
+    "gradient_accumulation_steps": 8,
+    "num_epochs": 20,
+    "mixed_precision": true,
+    "max_grad_norm": 1.0,
+    "prompt_dropout_rate": 0.5,
+    "warmup_steps": 50
+  },
+  "data": {
+    "image_size": 256,
+    "max_samples": 100,
+    "augmentation": false,
+    "num_workers": 0,
+    "pin_memory": false,
+    "persistent_workers": false
+  },
+  "logging": {
+    "log_every": 10,
+    "save_every": 50,
+    "use_wandb": false,
+    "output_dir": "./test_outputs_3050ti"
+  },
+  "optimizations": {
+    "torch_compile": false,
+    "cudnn_benchmark": true,
+    "channels_last": false,
+    "tf32": true,
+    "gradient_checkpointing": true,
+    "cpu_offload": true
+  }
+}

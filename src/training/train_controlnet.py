@@ -85,8 +85,14 @@ class ControlNetTrainer:
         self._setup_optimizer()
         self._setup_scheduler()
         
+        # Move models to device first
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        
         if mixed_precision:
-            self.scaler = torch.cuda.amp.GradScaler()
+            if self.device.type == 'cuda':
+                self.scaler = torch.cuda.amp.GradScaler()
+            else:
+                self.scaler = torch.amp.GradScaler()
         
         # Load checkpoint if provided
         self.global_step = 0
@@ -95,7 +101,6 @@ class ControlNetTrainer:
             self._load_checkpoint(resume_from_checkpoint)
         
         # Move models to device
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self._move_to_device()
         
         # Initialize wandb
@@ -141,10 +146,21 @@ class ControlNetTrainer:
     
     def _move_to_device(self):
         """Move models to training device."""
-        self.controlnet.to(self.device)
-        self.unet.to(self.device)
-        self.vae.to(self.device)
-        self.text_encoder.to(self.device)
+        # Determine target dtype based on mixed precision setting
+        if self.mixed_precision:
+            # Use float16 for inference models, float32 for training
+            inference_dtype = torch.float16
+            training_dtype = torch.float32
+        else:
+            # Use float32 for everything
+            inference_dtype = torch.float32
+            training_dtype = torch.float32
+        
+        # Move models with appropriate dtypes
+        self.unet.to(self.device, dtype=inference_dtype)
+        self.vae.to(self.device, dtype=inference_dtype)
+        self.text_encoder.to(self.device, dtype=inference_dtype)
+        self.controlnet.to(self.device, dtype=training_dtype)
         
         # Ensure U-Net is in eval mode (frozen)
         self.unet.eval()
@@ -200,9 +216,17 @@ class ControlNetTrainer:
         conditions = batch["condition"].to(self.device)
         prompts = batch["prompt"]
         
-        # Encode inputs
-        latents = self._encode_images(images)
-        text_embeddings = self._encode_prompt(prompts)
+        # Encode inputs (these use float16 models)
+        device_type = 'cuda' if self.device.type == 'cuda' else 'cpu'
+        with torch.amp.autocast(device_type=device_type, enabled=self.mixed_precision):
+            latents = self._encode_images(images)
+            text_embeddings = self._encode_prompt(prompts)
+        
+        # Convert to appropriate dtype for training
+        if self.mixed_precision:
+            # Keep latents in float32 for better gradient precision
+            latents = latents.float()
+            conditions = conditions.float()
         
         # Sample random timesteps
         batch_size = latents.shape[0]
@@ -215,21 +239,33 @@ class ControlNetTrainer:
         noise = torch.randn_like(latents)
         noisy_latents = self.noise_scheduler.add_noise(latents, noise, timesteps)
         
-        # Get ControlNet residuals
-        with torch.cuda.amp.autocast(enabled=self.mixed_precision):
-            _, down_residuals, mid_residual = self.controlnet(
-                noisy_latents,
-                timesteps,
-                text_embeddings,
-                conditions,
-                return_controlnet_outputs=True
-            )
+        # Get ControlNet residuals (ControlNet runs in float32)
+        _, down_residuals, mid_residual = self.controlnet(
+            noisy_latents,
+            timesteps,
+            text_embeddings,
+            conditions,
+            return_controlnet_outputs=True
+        )
+        
+        # Predict noise with ControlNet conditioning
+        with torch.amp.autocast(device_type=device_type, enabled=self.mixed_precision):
+            # Convert residuals to float16 for U-Net inference if using mixed precision
+            if self.mixed_precision:
+                down_residuals = [r.half() for r in down_residuals]
+                if mid_residual is not None:
+                    mid_residual = mid_residual.half()
+                # Also convert inputs to half for U-Net
+                noisy_latents_unet = noisy_latents.half()
+                text_embeddings_unet = text_embeddings.half()
+            else:
+                noisy_latents_unet = noisy_latents
+                text_embeddings_unet = text_embeddings
             
-            # Predict noise with ControlNet conditioning
             noise_pred = self.unet(
-                noisy_latents,
+                noisy_latents_unet,
                 timesteps,
-                encoder_hidden_states=text_embeddings,
+                encoder_hidden_states=text_embeddings_unet,
                 down_block_additional_residuals=down_residuals,
                 mid_block_additional_residual=mid_residual
             ).sample

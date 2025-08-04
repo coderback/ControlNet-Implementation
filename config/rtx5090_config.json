@@ -6,34 +6,35 @@
   },
   "training": {
     "learning_rate": 1e-4,
-    "batch_size": 4,
-    "num_epochs": 100,
+    "batch_size": 32,
+    "num_epochs": 80,
     "mixed_precision": true,
     "gradient_accumulation_steps": 1,
     "max_grad_norm": 1.0,
     "prompt_dropout_rate": 0.5,
-    "warmup_steps": 500
+    "warmup_steps": 500,
+    "compile_model": true
   },
   "data": {
     "image_size": 512,
-    "max_samples": null,
+    "max_samples": 10000,
     "augmentation": true,
-    "num_workers": 0
+    "num_workers": 8,
+    "pin_memory": true,
+    "persistent_workers": true,
+    "prefetch_factor": 4
   },
   "logging": {
-    "log_every": 100,
+    "log_every": 50,
     "save_every": 1000,
     "use_wandb": true,
-    "project_name": "controlnet-training"
+    "project_name": "controlnet-rtx5090"
   },
-  "scheduler": {
-    "type": "cosine",
-    "eta_min": 1e-7
-  },
-  "optimizer": {
-    "type": "adamw",
-    "weight_decay": 0.01,
-    "betas": [0.9, 0.999],
-    "eps": 1e-8
+  "optimizations": {
+    "torch_compile": true,
+    "cudnn_benchmark": true,
+    "channels_last": true,
+    "fused_adamw": true,
+    "tf32": true
   }
 }

@@ -59,6 +59,13 @@ class ConditionEncoder(nn.Module):
         Returns:
             Encoded features [B, output_channels, H//8, W//8]
         """
+        # Input validation
+        if condition.dim() != 4:
+            raise ValueError(f"Expected 4D input tensor [B, C, H, W], got {condition.dim()}D tensor")
+        
+        if condition.shape[1] != self.input_channels:
+            raise ValueError(f"Expected {self.input_channels} input channels, got {condition.shape[1]}")
+        
         return self.encoder(condition)
 
 

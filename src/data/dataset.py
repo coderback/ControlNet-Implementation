@@ -61,6 +61,9 @@ class ControlNetDataset(Dataset):
         # Load dataset metadata
         self.samples = self._load_samples()
         
+        # Validate samples and remove missing files
+        self.samples = self._validate_samples(self.samples)
+        
         if max_samples is not None:
             self.samples = self.samples[:max_samples]
         
@@ -119,6 +122,30 @@ class ControlNetDataset(Dataset):
         
         return samples
     
+    def _validate_samples(self, samples: List[Dict]) -> List[Dict]:
+        """Validate samples and remove entries with missing files."""
+        valid_samples = []
+        
+        for sample in samples:
+            # Check image path
+            image_path = sample["image_path"]
+            if not Path(image_path).is_absolute():
+                image_path = self.data_root / image_path
+            
+            # Check condition path
+            condition_path = sample["condition_path"]
+            if not Path(condition_path).is_absolute():
+                condition_path = self.data_root / condition_path
+            
+            # Only keep sample if both files exist
+            if Path(image_path).exists() and Path(condition_path).exists():
+                valid_samples.append(sample)
+            else:
+                print(f"Warning: Skipping sample with missing files - Image: {image_path}, Condition: {condition_path}")
+        
+        print(f"Dataset validation: {len(valid_samples)}/{len(samples)} samples are valid")
+        return valid_samples
+    
     def _setup_transforms(self) -> A.Compose:
         """Setup image transforms for training."""
         transforms = []
@@ -148,15 +175,29 @@ class ControlNetDataset(Dataset):
     
     def _load_image(self, path: str) -> np.ndarray:
         """Load and preprocess image."""
+        # Handle relative paths
+        if not Path(path).is_absolute():
+            path = self.data_root / path
+        
+        if not Path(path).exists():
+            raise FileNotFoundError(f"Image file not found: {path}")
+            
         image = Image.open(path).convert("RGB")
         return np.array(image)
     
     def _load_condition(self, path: str) -> np.ndarray:
         """Load and preprocess conditioning image."""
+        # Handle relative paths
+        if not Path(path).is_absolute():
+            path = self.data_root / path
+            
+        if not Path(path).exists():
+            raise FileNotFoundError(f"Condition file not found: {path}")
+            
         if self.condition_type == "canny":
             # For Canny, we might store the original image and compute edges
             if Path(path).suffix in ['.jpg', '.png']:
-                image = cv2.imread(path)
+                image = cv2.imread(str(path))
                 return preprocess_canny(image)
             else:
                 # Pre-computed Canny edges
@@ -165,7 +206,7 @@ class ControlNetDataset(Dataset):
         
         elif self.condition_type == "depth":
             # Depth maps are typically stored as grayscale or .npy files
-            if path.endswith('.npy'):
+            if str(path).endswith('.npy'):
                 depth = np.load(path)
             else:
                 depth = np.array(Image.open(path).convert("L"))
@@ -186,22 +227,42 @@ class ControlNetDataset(Dataset):
     
     def __getitem__(self, idx: int) -> Dict[str, Union[torch.Tensor, str]]:
         """Get a single sample."""
-        sample = self.samples[idx]
+        max_retries = 10
         
-        # Load image and condition
-        image = self._load_image(sample["image_path"])
-        condition = self._load_condition(sample["condition_path"])
+        for retry in range(max_retries):
+            try:
+                # Get sample (with wraparound if we run out)
+                actual_idx = (idx + retry) % len(self.samples)
+                sample = self.samples[actual_idx]
+                
+                # Load image and condition
+                image = self._load_image(sample["image_path"])
+                condition = self._load_condition(sample["condition_path"])
+                
+                # Ensure condition has the right number of channels for transforms
+                if self.condition_type == "canny" and len(condition.shape) == 3 and condition.shape[2] == 1:
+                    # Convert single-channel to 3-channel for transforms
+                    condition = np.repeat(condition, 3, axis=2)
+                elif self.condition_type == "depth" and len(condition.shape) == 3 and condition.shape[2] == 1:
+                    # Convert single-channel to 3-channel for transforms
+                    condition = np.repeat(condition, 3, axis=2)
+                
+                # Apply transforms
+                transformed = self.transforms(image=image, condition=condition)
+                
+                return {
+                    "image": transformed["image"],
+                    "condition": transformed["condition"],
+                    "prompt": sample.get("prompt", ""),
+                    "image_path": sample["image_path"],
+                    "condition_path": sample["condition_path"]
+                }
+                
+            except (FileNotFoundError, OSError) as e:
+                print(f"Warning: Sample {actual_idx} failed ({e}), trying next sample...")
+                continue
         
-        # Apply transforms
-        transformed = self.transforms(image=image, condition=condition)
-        
-        return {
-            "image": transformed["image"],
-            "condition": transformed["condition"],
-            "prompt": sample.get("prompt", ""),
-            "image_path": sample["image_path"],
-            "condition_path": sample["condition_path"]
-        }
+        raise RuntimeError(f"Failed to load any valid sample after {max_retries} retries")
 
 
 class SyntheticCannyDataset(Dataset):
@@ -278,26 +339,27 @@ class SyntheticCannyDataset(Dataset):
         }
 
 
+def controlnet_collate_fn(batch):
+    """Custom collate function for ControlNet batches."""
+    images = torch.stack([item["image"] for item in batch])
+    conditions = torch.stack([item["condition"] for item in batch])
+    prompts = [item["prompt"] for item in batch]
+    
+    return {
+        "image": images,
+        "condition": conditions,
+        "prompt": prompts
+    }
+
+
 def create_dataloader(
     dataset: Dataset,
     batch_size: int = 4,
     shuffle: bool = True,
-    num_workers: int = 4,
+    num_workers: int = 0,
     pin_memory: bool = True
 ) -> DataLoader:
     """Create DataLoader with appropriate settings."""
-    
-    def collate_fn(batch):
-        """Custom collate function."""
-        images = torch.stack([item["image"] for item in batch])
-        conditions = torch.stack([item["condition"] for item in batch])
-        prompts = [item["prompt"] for item in batch]
-        
-        return {
-            "image": images,
-            "condition": conditions,
-            "prompt": prompts
-        }
     
     return DataLoader(
         dataset,
@@ -305,7 +367,7 @@ def create_dataloader(
         shuffle=shuffle,
         num_workers=num_workers,
         pin_memory=pin_memory,
-        collate_fn=collate_fn,
+        collate_fn=controlnet_collate_fn,
         drop_last=True  # Important for stable training
     )
 

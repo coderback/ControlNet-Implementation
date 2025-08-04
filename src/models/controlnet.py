@@ -123,107 +123,93 @@ class ControlNet(nn.Module):
             If return_controlnet_outputs=True: (sample, controlnet_residuals)
         """
         # Encode conditioning input
-        condition_features = self.condition_encoder(condition)
+        encoded_condition = self.condition_encoder(condition)
         
-        # Standard U-Net forward pass with ControlNet modifications
+        # Ensure encoded condition matches sample batch size
+        if encoded_condition.shape[0] != sample.shape[0]:
+            # Expand condition to match batch size (for inference with CFG)
+            encoded_condition = encoded_condition.repeat(sample.shape[0] // encoded_condition.shape[0], 1, 1, 1)
+        
+        # Process through ControlNet blocks
         controlnet_residuals = []
+        mid_residual = None
         
-        # Process through encoder blocks with ControlNet
-        sample_down = sample
-        for i, (down_block, controlnet_block, zero_conv) in enumerate(
-            zip(self.unet.down_blocks, self.controlnet_down_blocks, self.zero_convs_down)
-        ):
-            # Run original down block (frozen)
-            original_output = down_block(
-                sample_down,
-                temb=None,  # Simplified - would need proper time embedding
-            )
+        # Start with the encoded condition
+        hidden_states = encoded_condition
+        
+        # Forward through encoder blocks with conditioning
+        for i, (down_block, zero_conv) in enumerate(zip(self.controlnet_down_blocks, self.zero_convs_down)):
+            # Get the sample at this level (downsample as needed)
+            level_sample = sample
+            for _ in range(i):
+                level_sample = F.avg_pool2d(level_sample, kernel_size=2, stride=2)
             
-            # Run ControlNet block (trainable)
-            # Add condition features at the first level
-            if i == 0:
-                # Resize condition features to match current resolution
-                h, w = sample_down.shape[-2:]
-                condition_resized = torch.nn.functional.interpolate(
-                    condition_features,
-                    size=(h, w),
+            # Resize condition to match this level if needed
+            if hidden_states.shape[-2:] != level_sample.shape[-2:]:
+                hidden_states = F.interpolate(
+                    hidden_states, 
+                    size=level_sample.shape[-2:], 
+                    mode='bilinear', 
+                    align_corners=False
+                )
+            
+            # Forward through ControlNet block with conditioning
+            if hasattr(down_block, 'forward'):
+                # Simple block forward
+                block_output = down_block(level_sample + hidden_states)
+            else:
+                # Handle more complex blocks
+                block_output = level_sample + hidden_states
+                for layer in down_block:
+                    if hasattr(layer, '__call__'):
+                        block_output = layer(block_output)
+            
+            # Apply zero convolution
+            controlnet_residual = zero_conv(block_output)
+            controlnet_residuals.append(controlnet_residual * self.conditioning_scale)
+            
+            # Update hidden states for next level (downsample)
+            hidden_states = F.avg_pool2d(block_output, kernel_size=2, stride=2)
+        
+        # Handle middle block
+        if self.controlnet_mid_block is not None and self.zero_conv_mid is not None:
+            # Resize condition to match middle block size
+            mid_size = (sample.shape[-2] // (2 ** len(self.controlnet_down_blocks)), 
+                       sample.shape[-1] // (2 ** len(self.controlnet_down_blocks)))
+            
+            if hidden_states.shape[-2:] != mid_size:
+                hidden_states = F.interpolate(
+                    hidden_states,
+                    size=mid_size,
                     mode='bilinear',
                     align_corners=False
                 )
-                controlnet_input = sample_down + condition_resized
+            
+            # Get sample at middle level
+            mid_sample = sample
+            for _ in range(len(self.controlnet_down_blocks)):
+                mid_sample = F.avg_pool2d(mid_sample, kernel_size=2, stride=2)
+            
+            # Forward through middle block
+            if hasattr(self.controlnet_mid_block, 'forward'):
+                mid_output = self.controlnet_mid_block(mid_sample + hidden_states)
             else:
-                controlnet_input = sample_down
-                
-            controlnet_output = controlnet_block(controlnet_input)
+                mid_output = mid_sample + hidden_states
+                for layer in self.controlnet_mid_block:
+                    if hasattr(layer, '__call__'):
+                        mid_output = layer(mid_output)
             
-            # Apply zero convolution and add to residuals
-            controlnet_residual = zero_conv(controlnet_output)
-            controlnet_residuals.append(controlnet_residual * self.conditioning_scale)
-            
-            sample_down = original_output
-        
-        # Process middle block with ControlNet
-        mid_residual = None
-        if self.unet.mid_block is not None and self.controlnet_mid_block is not None:
-            # Original middle block
-            original_mid = self.unet.mid_block(sample_down)
-            
-            # ControlNet middle block
-            controlnet_mid = self.controlnet_mid_block(sample_down)
-            
-            # Apply zero convolution
-            mid_residual = self.zero_conv_mid(controlnet_mid) * self.conditioning_scale
-            
-            sample_down = original_mid
+            mid_residual = self.zero_conv_mid(mid_output) * self.conditioning_scale
         
         if return_controlnet_outputs:
-            return sample_down, controlnet_residuals, mid_residual
+            return sample, controlnet_residuals, mid_residual
         
-        # Continue with decoder (using controlnet residuals)
-        return self._run_decoder_with_residuals(
-            sample_down, controlnet_residuals, mid_residual,
-            timestep, encoder_hidden_states
+        # ControlNet should not run the full U-Net - it only provides residuals
+        # The caller (training loop or pipeline) handles the U-Net forward pass
+        raise ValueError(
+            "ControlNet forward with return_controlnet_outputs=False is not supported. "
+            "Use return_controlnet_outputs=True and handle U-Net forward in the caller."
         )
-    
-    def _run_decoder_with_residuals(
-        self,
-        hidden_states: torch.Tensor,
-        down_residuals: List[torch.Tensor],
-        mid_residual: Optional[torch.Tensor],
-        timestep: Union[torch.Tensor, float, int],
-        encoder_hidden_states: torch.Tensor
-    ) -> torch.Tensor:
-        """Run the decoder with ControlNet residuals added."""
-        
-        # Add middle residual
-        if mid_residual is not None:
-            hidden_states = hidden_states + mid_residual
-        
-        # Process through up blocks
-        for i, up_block in enumerate(self.unet.up_blocks):
-            # Get corresponding down residuals
-            if i < len(down_residuals):
-                # Add ControlNet residuals to skip connections
-                res_samples = down_residuals[-(i+1):]  # Get residuals for this level
-                
-                # Run up block with modified residuals
-                hidden_states = up_block(
-                    hidden_states,
-                    res_hidden_states_tuple=tuple(res_samples) if res_samples else None,
-                    temb=None,  # Simplified
-                )
-            else:
-                hidden_states = up_block(hidden_states)
-        
-        # Final output
-        if hasattr(self.unet, 'conv_norm_out'):
-            hidden_states = self.unet.conv_norm_out(hidden_states)
-            hidden_states = self.unet.conv_act(hidden_states)
-        
-        if hasattr(self.unet, 'conv_out'):
-            hidden_states = self.unet.conv_out(hidden_states)
-        
-        return hidden_states
 
 
 class ControlNetPipeline(nn.Module):
@@ -311,7 +297,13 @@ class ControlNetPipeline(nn.Module):
         for t in timesteps:
             # Get ControlNet outputs
             latent_input = torch.cat([latents] * 2) if guidance_scale > 1.0 else latents
-            t_input = t.expand(latent_input.shape[0]) if hasattr(t, 'expand') else torch.tensor([t] * latent_input.shape[0], device=device)
+            # Handle timestep properly - it should be a scalar or batch tensor
+            if isinstance(t, torch.Tensor) and t.dim() == 0:
+                t_input = t.expand(latent_input.shape[0])
+            elif isinstance(t, torch.Tensor):
+                t_input = t
+            else:
+                t_input = torch.tensor([t] * latent_input.shape[0], device=device)
             
             # Forward through ControlNet
             _, down_residuals, mid_residual = self.controlnet(

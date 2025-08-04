@@ -10,6 +10,7 @@ import argparse
 from PIL import Image
 import numpy as np
 import cv2
+import torch
 
 sys.path.append(str(Path(__file__).parent.parent))
 

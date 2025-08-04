@@ -1,0 +1,56 @@
+{
+  "model": {
+    "base_model_id": "runwayml/stable-diffusion-v1-5",
+    "condition_type": "canny",
+    "conditioning_scale": 1.0
+  },
+  "training": {
+    "learning_rate": 0.0001,
+    "batch_size": 1,
+    "gradient_accumulation_steps": 16,
+    "num_epochs": 15,
+    "mixed_precision": true,
+    "max_grad_norm": 1.0,
+    "prompt_dropout_rate": 0.5,
+    "warmup_steps": 25,
+    "gradient_checkpointing": true,
+    "dataloader_num_workers": 0,
+    "pin_memory": false,
+    "save_steps": 50,
+    "eval_steps": 100
+  },
+  "data": {
+    "image_size": 64,
+    "max_samples": null,
+    "augmentation": false,
+    "channels_last": false
+  },
+  "logging": {
+    "log_every": 5,
+    "save_every": 50,
+    "use_wandb": false,
+    "output_dir": "./rtx3050ti_training_output",
+    "save_optimizer_state": false
+  },
+  "memory_optimizations": {
+    "offload_vae_to_cpu": true,
+    "offload_text_encoder_to_cpu": true,
+    "offload_unet_to_cpu": false,
+    "clear_cache_every_n_steps": 5,
+    "gc_collect_every_n_steps": 10,
+    "use_gradient_checkpointing": true,
+    "use_attention_slicing": true,
+    "use_cpu_offload": true,
+    "channels_last_memory_format": false,
+    "torch_compile": false,
+    "cudnn_benchmark": true,
+    "tf32": true
+  },
+  "hardware_specific": {
+    "gpu_name": "NVIDIA GeForce RTX 3050 Ti Laptop GPU",
+    "total_vram": 4.294443008,
+    "cuda_version": "12.8",
+    "optimization_target": "maximum_memory_efficiency",
+    "expected_training_time_hours": 3.5
+  }
+}

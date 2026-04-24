@@ -7,6 +7,7 @@ to pretrained diffusion models like Stable Diffusion.
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from typing import Dict, List, Optional, Tuple, Union, Any
 from diffusers import UNet2DConditionModel
 from diffusers.models.attention_processor import Attention

@@ -9,6 +9,7 @@ This implements the training loop for ControlNet following the paper's methodolo
 """
 
 import torch
+import contextlib
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
@@ -24,6 +25,15 @@ import json
 from diffusers import UNet2DConditionModel, DDPMScheduler, AutoencoderKL
 from diffusers.optimization import get_scheduler
 from transformers import CLIPTextModel, CLIPTokenizer
+def autocast_ctx(enabled: bool, device_type: str):
+    """
+    Compatibility autocast context manager.
+    Uses CUDA autocast when on CUDA with mixed precision enabled,
+    otherwise a no-op context.
+    """
+    if enabled and device_type == "cuda" and torch.cuda.is_available():
+        return torch.cuda.amp.autocast()
+    return contextlib.nullcontext()
 
 from ..models.controlnet import ControlNet
 from ..data.dataset import ControlNetDataset
@@ -218,7 +228,7 @@ class ControlNetTrainer:
         
         # Encode inputs (these use float16 models)
         device_type = 'cuda' if self.device.type == 'cuda' else 'cpu'
-        with torch.amp.autocast(device_type=device_type, enabled=self.mixed_precision):
+        with autocast_ctx(self.mixed_precision, device_type):
             latents = self._encode_images(images)
             text_embeddings = self._encode_prompt(prompts)
         
@@ -249,7 +259,7 @@ class ControlNetTrainer:
         )
         
         # Predict noise with ControlNet conditioning
-        with torch.amp.autocast(device_type=device_type, enabled=self.mixed_precision):
+        with autocast_ctx(self.mixed_precision, device_type):
             # Convert residuals to float16 for U-Net inference if using mixed precision
             if self.mixed_precision:
                 down_residuals = [r.half() for r in down_residuals]

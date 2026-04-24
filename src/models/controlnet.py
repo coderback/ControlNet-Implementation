@@ -13,10 +13,9 @@ from diffusers import UNet2DConditionModel
 from diffusers.models.attention_processor import Attention
 import copy
 
-from .controlnet_block import ControlNetBlock
-from .condition_encoder import ConditionEncoder, create_condition_encoder
+from .controlnet_block import ControlNetBlock, create_trainable_block
+from .condition_encoder import create_condition_encoder
 from .zero_conv import ZeroConv2d
-
 
 class ControlNet(nn.Module):
     """
@@ -71,8 +70,8 @@ class ControlNet(nn.Module):
         """Build ControlNet blocks from U-Net architecture."""
         # Create trainable copies of down blocks
         for i, down_block in enumerate(self.unet.down_blocks):
-            # Create trainable copy
-            controlnet_block = copy.deepcopy(down_block)
+            # Create trainable copy using the factory function
+            controlnet_block = create_trainable_block(down_block)
             self.controlnet_down_blocks.append(controlnet_block)
             
             # Create zero convolution for this level
@@ -82,7 +81,7 @@ class ControlNet(nn.Module):
         
         # Create trainable copy of middle block
         if self.unet.mid_block is not None:
-            self.controlnet_mid_block = copy.deepcopy(self.unet.mid_block)
+            self.controlnet_mid_block = create_trainable_block(self.unet.mid_block)
             
             # Zero convolution for middle block
             mid_channels = self.unet.config.block_out_channels[-1]

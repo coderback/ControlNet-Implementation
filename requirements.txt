@@ -15,4 +15,4 @@ wandb>=0.21.0
 omegaconf>=2.3.0
 einops>=0.8.1
 controlnet-aux>=0.0.10
-albumentations>=2.0.8
+albumentations<1.4.0

@@ -1,0 +1,36 @@
+# RunPod A100 80GB — closest to the paper's setup. Only if budget allows (higher $/hr).
+# Larger batch removes the need for gradient accumulation / checkpointing.
+
+model:
+  base_model_id: runwayml/stable-diffusion-v1-5
+  condition_type: canny
+  conditioning_scale: 1.0
+
+data:
+  root: data/coco
+  image_size: 512
+  max_train_samples: null
+  max_val_samples: 64
+  on_the_fly_canny: true
+  canny_low: 100
+  canny_high: 200
+
+training:
+  output_dir: outputs/runpod_a100
+  mixed_precision: bf16
+  train_batch_size: 8
+  gradient_accumulation_steps: 1
+  gradient_checkpointing: false
+  learning_rate: 1.0e-5
+  lr_scheduler: constant
+  lr_warmup_steps: 500
+  max_train_steps: 5000
+  prompt_dropout: 0.5
+  max_grad_norm: 1.0
+  checkpointing_steps: 1000
+  seed: 42
+
+logging:
+  report_to: wandb
+  validation_steps: 500
+  num_validation_images: 4

@@ -1,0 +1,36 @@
+# Local smoke test — RTX 3050Ti (4GB). Goal: prove the pipeline trains without OOM
+# and the loss moves. NOT meant to produce a good model. Runs free, before any paid GPU.
+
+model:
+  base_model_id: runwayml/stable-diffusion-v1-5
+  condition_type: canny          # canny | depth | pose | ...
+  conditioning_scale: 1.0
+
+data:
+  root: data/coco                # prepared by scripts/prepare_coco.py
+  image_size: 256                # SD VAE wants >=256; keep small for 4GB
+  max_train_samples: 50
+  max_val_samples: 8
+  on_the_fly_canny: true
+  canny_low: 100
+  canny_high: 200
+
+training:
+  output_dir: outputs/smoke_local
+  mixed_precision: fp16          # fp16 | bf16 | "no"
+  train_batch_size: 1
+  gradient_accumulation_steps: 4
+  gradient_checkpointing: true
+  learning_rate: 1.0e-4
+  lr_scheduler: cosine
+  lr_warmup_steps: 50
+  max_train_steps: 200
+  prompt_dropout: 0.5            # paper: drop text 50% of the time
+  max_grad_norm: 1.0
+  checkpointing_steps: 100
+  seed: 42
+
+logging:
+  report_to: none                # none | wandb
+  validation_steps: 100
+  num_validation_images: 2

@@ -1,0 +1,36 @@
+# RunPod 24GB card (RTX 4090 / A40). The main $8-budget training run.
+# Re-fetch val2017 on the pod (~778MB) via scripts/prepare_coco.py; captions JSON ships in repo.
+
+model:
+  base_model_id: runwayml/stable-diffusion-v1-5
+  condition_type: canny
+  conditioning_scale: 1.0
+
+data:
+  root: data/coco
+  image_size: 512
+  max_train_samples: null        # all of val2017 (~5k)
+  max_val_samples: 32
+  on_the_fly_canny: true
+  canny_low: 100
+  canny_high: 200
+
+training:
+  output_dir: outputs/runpod_24gb
+  mixed_precision: bf16
+  train_batch_size: 2
+  gradient_accumulation_steps: 4 # effective batch 8
+  gradient_checkpointing: true
+  learning_rate: 1.0e-5
+  lr_scheduler: constant
+  lr_warmup_steps: 200
+  max_train_steps: 3000          # watch for sudden convergence; stop early if budget tight
+  prompt_dropout: 0.5
+  max_grad_norm: 1.0
+  checkpointing_steps: 500
+  seed: 42
+
+logging:
+  report_to: wandb
+  validation_steps: 250
+  num_validation_images: 4

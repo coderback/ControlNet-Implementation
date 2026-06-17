@@ -1,399 +1,102 @@
 """
-Dataset implementation for ControlNet training.
+Datasets for ControlNet training.
 
-This provides data loading for various conditioning types (Canny, depth, pose, etc.)
-along with corresponding images and text prompts.
+`CocoCannyDataset` is the primary dataset: it reads the JSONL metadata produced by
+`scripts/prepare_coco.py` (one {"image": <relative path>, "caption": <str>} per line), loads each
+image, resizes to a square `image_size`, and generates the Canny edge condition on the fly. No
+precomputed condition files are needed.
+
+Returns per sample:
+    pixel_values            : float32 [3, H, W] in [-1, 1]  (target image for the VAE)
+    conditioning_pixel_values: float32 [3, H, W] in [0, 1]  (Canny edges, fed to ControlNet)
+    caption                 : str
 """
 
-import torch
-from torch.utils.data import Dataset, DataLoader
-import numpy as np
-from PIL import Image
-import cv2
 import json
 from pathlib import Path
-from typing import Dict, List, Optional, Union, Tuple
-import albumentations as A
-from albumentations.pytorch import ToTensorV2
+from typing import Dict, List, Optional, Union
 
-from ..models.condition_encoder import preprocess_canny, preprocess_depth, preprocess_pose
+import numpy as np
+import torch
+from PIL import Image
+from torch.utils.data import DataLoader, Dataset
+
+from .preprocess import make_canny
 
 
-class ControlNetDataset(Dataset):
-    """
-    Dataset for ControlNet training.
-    
-    Supports various conditioning types:
-    - Canny edges
-    - Depth maps  
-    - Human poses
-    - Segmentation maps
-    - Surface normals
-    - User scribbles
-    """
-    
+class CocoCannyDataset(Dataset):
     def __init__(
         self,
-        data_root: str,
-        condition_type: str = "canny",
-        image_size: int = 512,
+        root: str,
         split: str = "train",
+        image_size: int = 512,
+        canny_low: int = 100,
+        canny_high: int = 200,
         max_samples: Optional[int] = None,
-        augment: bool = True
     ):
-        """
-        Initialize dataset.
-        
-        Args:
-            data_root: Root directory containing the dataset
-            condition_type: Type of conditioning ('canny', 'depth', 'pose', etc.)
-            image_size: Target image size for training
-            split: Dataset split ('train', 'val', 'test')
-            max_samples: Maximum number of samples to load (for debugging)
-            augment: Whether to apply data augmentation
-        """
-        self.data_root = Path(data_root)
-        self.condition_type = condition_type
+        self.root = Path(root)
         self.image_size = image_size
-        self.split = split
-        self.augment = augment
-        
-        # Load dataset metadata
-        self.samples = self._load_samples()
-        
-        # Validate samples and remove missing files
-        self.samples = self._validate_samples(self.samples)
-        
+        self.canny_low = canny_low
+        self.canny_high = canny_high
+
+        metadata = self.root / f"{split}.jsonl"
+        if not metadata.exists():
+            raise FileNotFoundError(
+                f"{metadata} not found — run `python scripts/prepare_coco.py --root {root}` first."
+            )
+        with open(metadata, "r", encoding="utf-8") as f:
+            self.samples: List[Dict] = [json.loads(line) for line in f if line.strip()]
         if max_samples is not None:
             self.samples = self.samples[:max_samples]
-        
-        # Setup image transforms
-        self.transforms = self._setup_transforms()
-        
-        print(f"Loaded {len(self.samples)} samples for {condition_type} conditioning")
-    
-    def _load_samples(self) -> List[Dict]:
-        """Load dataset samples from metadata file."""
-        metadata_file = self.data_root / f"{self.split}.json"
-        
-        if not metadata_file.exists():
-            # If no metadata file, scan directories
-            return self._scan_directories()
-        
-        with open(metadata_file, 'r') as f:
-            samples = json.load(f)
-        
-        return samples
-    
-    def _scan_directories(self) -> List[Dict]:
-        """Scan directories to create sample list."""
-        samples = []
-        
-        # Expected directory structure:
-        # data_root/
-        #   images/
-        #   conditions/
-        #   prompts.json (optional)
-        
-        image_dir = self.data_root / "images"
-        condition_dir = self.data_root / "conditions" / self.condition_type
-        prompts_file = self.data_root / "prompts.json"
-        
-        # Load prompts if available
-        prompts = {}
-        if prompts_file.exists():
-            with open(prompts_file, 'r') as f:
-                prompts = json.load(f)
-        
-        # Scan for matching image and condition pairs
-        for img_path in sorted(image_dir.glob("*.jpg")) + sorted(image_dir.glob("*.png")):
-            # Look for corresponding condition file
-            condition_path = condition_dir / f"{img_path.stem}.png"
-            if not condition_path.exists():
-                condition_path = condition_dir / f"{img_path.stem}.jpg"
-            
-            if condition_path.exists():
-                sample = {
-                    "image_path": str(img_path),
-                    "condition_path": str(condition_path),
-                    "prompt": prompts.get(img_path.stem, "")
-                }
-                samples.append(sample)
-        
-        return samples
-    
-    def _validate_samples(self, samples: List[Dict]) -> List[Dict]:
-        """Validate samples and remove entries with missing files."""
-        valid_samples = []
-        
-        for sample in samples:
-            # Check image path
-            image_path = sample["image_path"]
-            if not Path(image_path).is_absolute():
-                image_path = self.data_root / image_path
-            
-            # Check condition path
-            condition_path = sample["condition_path"]
-            if not Path(condition_path).is_absolute():
-                condition_path = self.data_root / condition_path
-            
-            # Only keep sample if both files exist
-            if Path(image_path).exists() and Path(condition_path).exists():
-                valid_samples.append(sample)
-            else:
-                print(f"Warning: Skipping sample with missing files - Image: {image_path}, Condition: {condition_path}")
-        
-        print(f"Dataset validation: {len(valid_samples)}/{len(samples)} samples are valid")
-        return valid_samples
-    
-    def _setup_transforms(self) -> A.Compose:
-        """Setup image transforms for training."""
-        transforms = []
-        
-        # Resize
-        transforms.append(A.Resize(self.image_size, self.image_size))
-        
-        if self.augment and self.split == "train":
-            # Data augmentation
-            transforms.extend([
-                A.HorizontalFlip(p=0.5),
-                A.RandomBrightnessContrast(p=0.3),
-                A.HueSaturationValue(p=0.3),
-                A.RandomGamma(p=0.3),
-            ])
-        
-        # Normalization for Stable Diffusion
-        transforms.extend([
-            A.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
-            ToTensorV2()
-        ])
-        
-        return A.Compose(
-            transforms,
-            additional_targets={"condition": "image"}
-        )
-    
-    def _load_image(self, path: str) -> np.ndarray:
-        """Load and preprocess image."""
-        # Handle relative paths
-        if not Path(path).is_absolute():
-            path = self.data_root / path
-        
-        if not Path(path).exists():
-            raise FileNotFoundError(f"Image file not found: {path}")
-            
-        image = Image.open(path).convert("RGB")
-        return np.array(image)
-    
-    def _load_condition(self, path: str) -> np.ndarray:
-        """Load and preprocess conditioning image."""
-        # Handle relative paths
-        if not Path(path).is_absolute():
-            path = self.data_root / path
-            
-        if not Path(path).exists():
-            raise FileNotFoundError(f"Condition file not found: {path}")
-            
-        if self.condition_type == "canny":
-            # For Canny, we might store the original image and compute edges
-            if Path(path).suffix in ['.jpg', '.png']:
-                image = cv2.imread(str(path))
-                return preprocess_canny(image)
-            else:
-                # Pre-computed Canny edges
-                condition = Image.open(path).convert("L")
-                return np.array(condition)[..., None]
-        
-        elif self.condition_type == "depth":
-            # Depth maps are typically stored as grayscale or .npy files
-            if str(path).endswith('.npy'):
-                depth = np.load(path)
-            else:
-                depth = np.array(Image.open(path).convert("L"))
-            return preprocess_depth(depth)
-        
-        elif self.condition_type == "pose":
-            # Pose images are typically RGB visualizations
-            condition = Image.open(path).convert("RGB")
-            return np.array(condition)
-        
-        else:
-            # Generic RGB condition
-            condition = Image.open(path).convert("RGB")
-            return np.array(condition)
-    
+        print(f"Loaded {len(self.samples)} {split} samples from {metadata}")
+
     def __len__(self) -> int:
         return len(self.samples)
-    
-    def __getitem__(self, idx: int) -> Dict[str, Union[torch.Tensor, str]]:
-        """Get a single sample."""
-        max_retries = 10
-        
-        for retry in range(max_retries):
-            try:
-                # Get sample (with wraparound if we run out)
-                actual_idx = (idx + retry) % len(self.samples)
-                sample = self.samples[actual_idx]
-                
-                # Load image and condition
-                image = self._load_image(sample["image_path"])
-                condition = self._load_condition(sample["condition_path"])
-                
-                # Ensure condition has the right number of channels for transforms
-                if self.condition_type == "canny" and len(condition.shape) == 3 and condition.shape[2] == 1:
-                    # Convert single-channel to 3-channel for transforms
-                    condition = np.repeat(condition, 3, axis=2)
-                elif self.condition_type == "depth" and len(condition.shape) == 3 and condition.shape[2] == 1:
-                    # Convert single-channel to 3-channel for transforms
-                    condition = np.repeat(condition, 3, axis=2)
-                
-                # Apply transforms
-                transformed = self.transforms(image=image, condition=condition)
-                
-                return {
-                    "image": transformed["image"],
-                    "condition": transformed["condition"],
-                    "prompt": sample.get("prompt", ""),
-                    "image_path": sample["image_path"],
-                    "condition_path": sample["condition_path"]
-                }
-                
-            except (FileNotFoundError, OSError) as e:
-                print(f"Warning: Sample {actual_idx} failed ({e}), trying next sample...")
-                continue
-        
-        raise RuntimeError(f"Failed to load any valid sample after {max_retries} retries")
 
+    def _load_image(self, rel_path: str) -> np.ndarray:
+        image = Image.open(self.root / rel_path).convert("RGB").resize(
+            (self.image_size, self.image_size), Image.BICUBIC
+        )
+        return np.array(image)  # [H, W, 3] uint8
 
-class SyntheticCannyDataset(Dataset):
-    """
-    Synthetic dataset that generates Canny edges from regular images.
-    Useful for quick experimentation without pre-processed conditioning data.
-    """
-    
-    def __init__(
-        self,
-        image_dir: str,
-        image_size: int = 512,
-        low_threshold: int = 100,
-        high_threshold: int = 200,
-        split: str = "train",
-        max_samples: Optional[int] = None
-    ):
-        self.image_dir = Path(image_dir)
-        self.image_size = image_size
-        self.low_threshold = low_threshold
-        self.high_threshold = high_threshold
-        self.split = split
-        
-        # Find all images
-        self.image_paths = []
-        for ext in ['*.jpg', '*.jpeg', '*.png', '*.bmp']:
-            self.image_paths.extend(list(self.image_dir.glob(ext)))
-        
-        if max_samples is not None:
-            self.image_paths = self.image_paths[:max_samples]
-        
-        self.transforms = self._setup_transforms()
-        
-        print(f"Created synthetic Canny dataset with {len(self.image_paths)} images")
-    
-    def _setup_transforms(self) -> A.Compose:
-        """Setup transforms."""
-        return A.Compose([
-            A.Resize(self.image_size, self.image_size),
-            A.HorizontalFlip(p=0.5) if self.split == "train" else A.NoOp(),
-            A.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
-            ToTensorV2()
-        ], additional_targets={"condition": "image"})
-    
-    def _generate_canny(self, image: np.ndarray) -> np.ndarray:
-        """Generate Canny edges from image."""
-        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-        edges = cv2.Canny(gray, self.low_threshold, self.high_threshold)
-        
-        # Convert to 3-channel for consistency
-        edges_rgb = cv2.cvtColor(edges, cv2.COLOR_GRAY2RGB)
-        return edges_rgb
-    
-    def __len__(self) -> int:
-        return len(self.image_paths)
-    
     def __getitem__(self, idx: int) -> Dict[str, Union[torch.Tensor, str]]:
-        image_path = self.image_paths[idx]
-        
-        # Load image
-        image = np.array(Image.open(image_path).convert("RGB"))
-        
-        # Generate Canny edges
-        condition = self._generate_canny(image)
-        
-        # Apply transforms
-        transformed = self.transforms(image=image, condition=condition)
-        
+        sample = self.samples[idx]
+        image = self._load_image(sample["image"])
+        condition = make_canny(image, self.canny_low, self.canny_high)
+
+        # target image -> [-1, 1]
+        pixel_values = torch.from_numpy(image).float().permute(2, 0, 1) / 127.5 - 1.0
+        # condition -> [0, 1]
+        conditioning_pixel_values = torch.from_numpy(condition).float().permute(2, 0, 1) / 255.0
+
         return {
-            "image": transformed["image"],
-            "condition": transformed["condition"],
-            "prompt": "",  # No prompts in this simple dataset
-            "image_path": str(image_path)
+            "pixel_values": pixel_values,
+            "conditioning_pixel_values": conditioning_pixel_values,
+            "caption": sample.get("caption", ""),
         }
 
 
-def controlnet_collate_fn(batch):
-    """Custom collate function for ControlNet batches."""
-    images = torch.stack([item["image"] for item in batch])
-    conditions = torch.stack([item["condition"] for item in batch])
-    prompts = [item["prompt"] for item in batch]
-    
+def collate_fn(batch: List[Dict]) -> Dict:
     return {
-        "image": images,
-        "condition": conditions,
-        "prompt": prompts
+        "pixel_values": torch.stack([b["pixel_values"] for b in batch]),
+        "conditioning_pixel_values": torch.stack([b["conditioning_pixel_values"] for b in batch]),
+        "captions": [b["caption"] for b in batch],
     }
 
 
 def create_dataloader(
     dataset: Dataset,
-    batch_size: int = 4,
+    batch_size: int = 1,
     shuffle: bool = True,
     num_workers: int = 0,
-    pin_memory: bool = True
+    pin_memory: bool = False,
 ) -> DataLoader:
-    """Create DataLoader with appropriate settings."""
-    
     return DataLoader(
         dataset,
         batch_size=batch_size,
         shuffle=shuffle,
         num_workers=num_workers,
         pin_memory=pin_memory,
-        collate_fn=controlnet_collate_fn,
-        drop_last=True  # Important for stable training
+        collate_fn=collate_fn,
+        drop_last=True,
     )
-
-
-# Dataset factory function
-def create_dataset(
-    data_root: str,
-    condition_type: str,
-    image_size: int = 512,
-    split: str = "train",
-    **kwargs
-) -> Dataset:
-    """Factory function to create datasets."""
-    
-    if condition_type == "synthetic_canny":
-        return SyntheticCannyDataset(
-            image_dir=data_root,
-            image_size=image_size,
-            split=split,
-            **kwargs
-        )
-    else:
-        return ControlNetDataset(
-            data_root=data_root,
-            condition_type=condition_type,
-            image_size=image_size,
-            split=split,
-            **kwargs
-        )

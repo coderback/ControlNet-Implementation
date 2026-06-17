@@ -63,8 +63,16 @@ class ConditionEncoder(nn.Module):
         if condition.dim() != 4:
             raise ValueError(f"Expected 4D input tensor [B, C, H, W], got {condition.dim()}D tensor")
         
+        # Handle channel conversion for compatibility
         if condition.shape[1] != self.input_channels:
-            raise ValueError(f"Expected {self.input_channels} input channels, got {condition.shape[1]}")
+            if self.input_channels == 1 and condition.shape[1] == 3:
+                # Convert RGB to grayscale by taking the first channel or averaging
+                condition = condition.mean(dim=1, keepdim=True)
+            elif self.input_channels == 3 and condition.shape[1] == 1:
+                # Convert grayscale to RGB by repeating the channel
+                condition = condition.repeat(1, 3, 1, 1)
+            else:
+                raise ValueError(f"Expected {self.input_channels} input channels, got {condition.shape[1]}")
         
         return self.encoder(condition)
 
@@ -74,7 +82,7 @@ class CannyEncoder(ConditionEncoder):
     
     def __init__(self, output_channels: int = 320):
         super().__init__(
-            input_channels=1,  # Canny edges are grayscale
+            input_channels=1,  # Canny edges are grayscale, auto-converted from 3-channel input
             output_channels=output_channels,
             hidden_channels=[16, 32, 64, 128]
         )

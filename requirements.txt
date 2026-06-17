@@ -1,18 +1,38 @@
+# Install torch/torchvision from the CUDA 12.8 wheels index.
+# On RunPod, the base image may already ship torch built for its driver/CUDA —
+# in that case drop the --extra-index-url line and the torch/torchvision pins
+# and just `pip install -r requirements.txt` for the rest.
 --extra-index-url https://download.pytorch.org/whl/cu128
 
-torch
-torchvision
+torch>=2.5
+torchvision>=0.20
+
+# Core modelling stack
 diffusers>=0.34.0
 transformers>=4.54.1
 accelerate>=1.9.0
-xformers>=0.0.31.post1
+xformers>=0.0.31.post1          # optional; speeds up attention on CUDA
+
+# Data / conditioning
 opencv-python>=4.12.0.88
-numpy>=2.3.2
-Pillow>=11.3.0
-matplotlib>=3.10.5
-tqdm>=4.67.1
-wandb>=0.21.0
+numpy>=2.0
+Pillow>=11.0
+albumentations<1.4.0
+controlnet-aux>=0.0.10          # depth/pose/hed detectors for non-Canny conditions
+
+# Config / utils
 omegaconf>=2.3.0
 einops>=0.8.1
-controlnet-aux>=0.0.10
-albumentations<1.4.0
+tqdm>=4.67.1
+
+# Training + logging
+wandb>=0.21.0
+matplotlib>=3.10.0
+
+# Evaluation
+torchmetrics>=1.4.0
+clean-fid>=0.1.35
+scikit-image>=0.24.0
+
+# Tests
+pytest>=8.0.0

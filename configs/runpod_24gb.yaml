@@ -1,5 +1,6 @@
-# RunPod 24GB card (RTX 4090 / A40). The main $8-budget training run.
-# Re-fetch val2017 on the pod (~778MB) via scripts/prepare_coco.py; captions JSON ships in repo.
+# RunPod single-card run (tested targets: RTX 4090 24GB @ ~$0.34/hr, RTX 5000 Ada 32GB @ ~$0.49/hr).
+# The main $8-budget training run. Re-fetch val2017 on the pod (~778MB) via scripts/prepare_coco.py.
+# Settings fit a 24GB card with gradient checkpointing; the 32GB card runs them with headroom.
 
 model:
   base_model_id: runwayml/stable-diffusion-v1-5
@@ -18,8 +19,8 @@ data:
 training:
   output_dir: outputs/runpod_24gb
   mixed_precision: bf16
-  train_batch_size: 2
-  gradient_accumulation_steps: 4 # effective batch 8
+  train_batch_size: 4
+  gradient_accumulation_steps: 2 # effective batch 8 (bs4 fits 24GB+ with checkpointing; faster on 32GB)
   gradient_checkpointing: true
   learning_rate: 1.0e-5
   lr_scheduler: constant

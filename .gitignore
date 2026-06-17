@@ -1,0 +1,42 @@
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Datasets (never commit data — see scripts/prepare_coco.py to regenerate)
+/data/
+datasets/
+**/datasets/
+*.zip
+
+# Training artifacts
+outputs/
+checkpoints/
+*.pt
+*.ckpt
+*.safetensors
+wandb/
+test_output/
+*_training_output/
+
+# Large source artifacts
+*.pdf
+
+# OS
+.DS_Store
+Thumbs.db

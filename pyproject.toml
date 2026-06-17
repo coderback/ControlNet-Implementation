@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "controlnet-implementation"
+version = "0.1.0"
+description = "A from-scratch, parity-verified implementation of ControlNet (arXiv 2302.05543) on Stable Diffusion v1.5"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [{ name = "Timothy Oluwatobi Ojebiyi" }]
+
+# Runtime deps are pinned loosely here; see requirements.txt for the CUDA-specific
+# install (torch from the cu128 index). `pip install -e .` makes `src` importable
+# as the `controlnet` package and removes the sys.path hacks in examples/.
+dependencies = [
+    "torch",
+    "torchvision",
+    "diffusers>=0.34.0",
+    "transformers>=4.54.1",
+    "accelerate>=1.9.0",
+    "opencv-python>=4.12.0.88",
+    "numpy",
+    "Pillow",
+    "tqdm",
+    "omegaconf>=2.3.0",
+    "einops>=0.8.1",
+]
+
+[project.optional-dependencies]
+train = ["wandb>=0.21.0", "albumentations<1.4.0", "controlnet-aux>=0.0.10"]
+eval = ["torchmetrics>=1.4.0", "clean-fid>=0.1.35", "scikit-image>=0.24.0"]
+dev = ["pytest>=8.0.0"]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

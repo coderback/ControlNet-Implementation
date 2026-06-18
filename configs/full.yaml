@@ -1,0 +1,43 @@
+# Full training run — the one meant to actually converge (the 3000-step budget run did not).
+# Train on a 45k train2017 subset, evaluate on val2017. Target ~12k steps, checkpoint every 2k so
+# you can detect "sudden convergence" with scripts/diagnose.py and early-stop once control emerges.
+#
+# Pod setup (RunPod 24-32GB):
+#   python scripts/prepare_coco.py --split val2017 --download                       # val.jsonl (eval)
+#   python scripts/prepare_coco.py --split train2017 --max-images 45000 --download   # train.jsonl (45k)
+#   accelerate launch scripts/train.py --config configs/full.yaml
+
+model:
+  base_model_id: runwayml/stable-diffusion-v1-5
+  condition_type: canny
+  conditioning_scale: 1.0
+
+data:
+  root: data/coco
+  train_split: train             # train.jsonl == 45k train2017 subset
+  image_size: 512
+  max_train_samples: null        # use all 45k
+  max_val_samples: 100
+  on_the_fly_canny: true
+  canny_low: 100
+  canny_high: 200
+
+training:
+  output_dir: outputs/full
+  mixed_precision: bf16
+  train_batch_size: 4
+  gradient_accumulation_steps: 4 # effective batch 16  (~12k steps x 16 / 45k = ~4.3 epochs)
+  gradient_checkpointing: true   # set false on a 32GB card for ~25% speedup
+  learning_rate: 1.0e-5
+  lr_scheduler: constant
+  lr_warmup_steps: 500
+  max_train_steps: 12000
+  prompt_dropout: 0.5
+  max_grad_norm: 1.0
+  checkpointing_steps: 2000      # every 2k -> run scripts/diagnose.py on each, stop when control emerges
+  seed: 42
+
+logging:
+  report_to: wandb
+  validation_steps: 2000
+  num_validation_images: 4

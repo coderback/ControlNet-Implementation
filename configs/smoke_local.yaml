@@ -8,6 +8,7 @@ model:
 
 data:
   root: data/coco                # prepared by scripts/prepare_coco.py
+  train_split: val               # smoke-test on val.jsonl (no 18GB train download needed)
   image_size: 256                # SD VAE wants >=256; keep small for 4GB
   max_train_samples: 50
   max_val_samples: 8

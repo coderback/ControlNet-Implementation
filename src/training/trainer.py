@@ -86,8 +86,8 @@ def train(config: DictConfig) -> None:
     optimizer = torch.optim.AdamW(controlnet.parameters(), lr=tr.learning_rate,
                                   betas=(0.9, 0.999), weight_decay=1e-2, eps=1e-8)
 
-    train_ds = CocoCannyDataset(d.root, "train", d.image_size, d.canny_low, d.canny_high,
-                                d.get("max_train_samples"))
+    train_ds = CocoCannyDataset(d.root, d.get("train_split", "train"), d.image_size,
+                                d.canny_low, d.canny_high, d.get("max_train_samples"))
     train_dl = create_dataloader(train_ds, tr.train_batch_size, shuffle=True)
 
     lr_scheduler = get_scheduler(

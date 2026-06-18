@@ -35,10 +35,15 @@ def compute_clip_score(images: Sequence[Image.Image], prompts: Sequence[str]) ->
 
 
 def canny_fidelity(generated: Image.Image, condition: np.ndarray,
-                   low: int = 100, high: int = 200) -> dict:
+                   low: int = 100, high: int = 200, tolerance: int = 2) -> dict:
     """Re-extract Canny from `generated`, compare to the input `condition` edge map.
 
-    `condition` is a single- or 3-channel edge map (uint8). Returns {"edge_f1", "ssim"}.
+    Edges almost never align pixel-exactly, so matching is done with a `tolerance` (each edge map is
+    dilated before overlap). Returns:
+      - edge_recall:    fraction of the *conditioning* edges reproduced in the generation (the key
+                        "did it follow the control?" number) — within `tolerance` px.
+      - edge_f1:        F1 of the tolerant precision/recall.
+      - ssim:           SSIM of the raw edge maps (kept for continuity; insensitive — see README).
     """
     import cv2
     from skimage.metrics import structural_similarity as ssim
@@ -51,12 +56,13 @@ def canny_fidelity(generated: Image.Image, condition: np.ndarray,
 
     g = gen_edges > 0
     c = cond > 0
-    tp = np.logical_and(g, c).sum()
-    fp = np.logical_and(g, ~c).sum()
-    fn = np.logical_and(~g, c).sum()
-    precision = tp / (tp + fp + 1e-8)
-    recall = tp / (tp + fn + 1e-8)
+    k = np.ones((2 * tolerance + 1, 2 * tolerance + 1), np.uint8)
+    g_dil = cv2.dilate(g.astype(np.uint8), k) > 0
+    c_dil = cv2.dilate(c.astype(np.uint8), k) > 0
+
+    precision = float(np.logical_and(g, c_dil).sum() / (g.sum() + 1e-8))   # gen edges near a cond edge
+    recall = float(np.logical_and(c, g_dil).sum() / (c.sum() + 1e-8))      # cond edges reproduced
     f1 = 2 * precision * recall / (precision + recall + 1e-8)
 
     ssim_val = ssim(gen_edges, cond, data_range=255)
-    return {"edge_f1": float(f1), "ssim": float(ssim_val)}
+    return {"edge_f1": float(f1), "edge_recall": recall, "ssim": float(ssim_val)}

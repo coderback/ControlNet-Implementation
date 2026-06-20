@@ -35,6 +35,8 @@ training:
   prompt_dropout: 0.5
   max_grad_norm: 1.0
   checkpointing_steps: 2000      # every 2k -> run scripts/diagnose.py on each, stop when control emerges
+  num_workers: 8                 # parallel image decode + Canny; keeps the GPU fed (~88% util vs ~50% at 0)
+  pin_memory: true
   seed: 42
 
 logging:

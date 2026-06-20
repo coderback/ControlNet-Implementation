@@ -29,6 +29,7 @@ training:
   prompt_dropout: 0.5            # paper: drop text 50% of the time
   max_grad_norm: 1.0
   checkpointing_steps: 100
+  num_workers: 0                 # 50 samples on Windows: spawn overhead > 0 benefit
   seed: 42
 
 logging:

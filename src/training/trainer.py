@@ -88,7 +88,9 @@ def train(config: DictConfig) -> None:
 
     train_ds = CocoCannyDataset(d.root, d.get("train_split", "train"), d.image_size,
                                 d.canny_low, d.canny_high, d.get("max_train_samples"))
-    train_dl = create_dataloader(train_ds, tr.train_batch_size, shuffle=True)
+    train_dl = create_dataloader(train_ds, tr.train_batch_size, shuffle=True,
+                                 num_workers=tr.get("num_workers", 8),
+                                 pin_memory=tr.get("pin_memory", True))
 
     lr_scheduler = get_scheduler(
         tr.lr_scheduler, optimizer=optimizer,

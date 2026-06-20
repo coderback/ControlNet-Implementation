@@ -13,13 +13,14 @@ on a frozen Stable Diffusion v1.5.
 The ControlNet here is **hand-written**, not a wrapper around the library model. Its correctness
 isn't just claimed — it's **proven by a test** (`tests/test_parity_with_diffusers.py`) that asserts
 its residuals match Hugging Face `diffusers.ControlNetModel` to **~1e-4** given identical weights.
-It was then trained on COCO (Canny edges) on a **~$1–2 RunPod budget** and evaluated against a
-control-off baseline.
+It was then trained on COCO (Canny edges) — **45k images, 12k steps** on a single mid-range GPU — and
+evaluated against a control-off baseline.
 
-![control off vs control on](assets/comparison.png)
+![Canny edges, control off, control on, original](assets/diagnostic.png)
 
-*Each prompt generated twice from the same seed: **control OFF** (`scale=0`) ignores the Canny edges,
-**control ON** follows them. Trained 3000 steps on COCO val2017 at 512px.*
+*Columns: **Canny edges** (the condition) · **control OFF** (`scale=0`, ignores the edges) ·
+**control ON** (`scale=1`, follows them) · **original**. Each pair generated from the same seed;
+COCO val2017 at 512px. Trained 12k steps on a 45k-image COCO train2017 subset.*
 
 A full end-to-end narrative — data → conditioning → architecture → training → results — renders on
 GitHub in [`notebooks/walkthrough.ipynb`](notebooks/walkthrough.ipynb).
@@ -45,18 +46,27 @@ primitives (that's the base model, not ControlNet's contribution), which is exac
 ## Results
 
 Trained ControlNet (Canny) vs. the **same model with control switched off**
-(`controlnet_conditioning_scale=0`), 100 COCO val samples, identical seeds:
+(`controlnet_conditioning_scale=0`), **100 COCO val2017 samples**, identical seeds:
 
 | Metric | Control **ON** | Control **OFF** (baseline) |
 |---|:--:|:--:|
-| Canny SSIM ↑ (edge adherence) | **0.370** | _baseline pending_ |
-| Canny edge-F1 ↑ | 0.083 | _baseline pending_ |
-| CLIP score ↑ (text alignment) | **32.2** | _baseline pending_ |
+| Canny edge-recall ↑ (edges reproduced) | **0.77** | 0.36 |
+| Canny edge-F1 ↑ | **0.79** | 0.34 |
+| Canny SSIM ↑ (structural adherence) | **0.54** | 0.35 |
+| CLIP score ↑ (text alignment) | 31.6 | 31.8 |
 
-The visual triptychs above are the clearest evidence the model follows the condition; SSIM and CLIP
-back it quantitatively. _edge-F1 is reported for completeness but is harsh — it demands ~1-pixel edge
-alignment. FID is omitted: it needs thousands of samples to be meaningful, far more than a 250-image
-val split supports._
+![control on vs off — Canny fidelity metrics](assets/metrics_comparison.png)
+
+Turning control on roughly **doubles edge fidelity** (recall 0.36 → 0.77, F1 0.34 → 0.79) and lifts
+structural SSIM (0.35 → 0.54), while **CLIP score is unchanged** (~31.6) — the model follows the Canny
+edges at no cost to prompt adherence. _FID is omitted from the headline: at 100 samples it is far too
+noisy to be meaningful (it needs thousands); for the record it was 173 (ON) vs 199 (OFF), i.e. control
+did not hurt realism._
+
+And this isn't an average hiding failures — **edge-recall rises on every individual sample** when
+control is switched on:
+
+![per-sample edge-recall, control ON vs OFF](assets/per_sample_recall.png)
 
 ## Quick start
 
@@ -86,24 +96,35 @@ accelerate launch scripts/train.py --config configs/smoke_local.yaml
 
 **Full training** — on a larger GPU (24–32 GB):
 ```bash
-accelerate launch scripts/train.py --config configs/runpod_24gb.yaml
+accelerate launch scripts/train.py --config configs/full.yaml
 ```
 
 Tune the run in `configs/*.yaml`: `image_size`, `train_batch_size`, `gradient_accumulation_steps`,
 `max_train_steps`, and `data.max_train_samples`. Checkpoints are written to `outputs/<run>/` as
-`controlnet-<step>.safetensors` every `checkpointing_steps`. The example results below were trained
-with `configs/runpod_24gb.yaml` (512², 3000 steps) on COCO `val2017`.
+`controlnet-<step>.safetensors` every `checkpointing_steps`. The results above were trained with
+`configs/full.yaml` (512², 12k steps, effective batch 16, bf16) on a **45k-image COCO `train2017`
+subset** and evaluated on `val2017`.
+
+**Watching control emerge.** ControlNet's loss stays flat and noisy, so it's a poor progress signal.
+The real tell is the **zero convolutions** lifting off their zero init toward a normal conv's
+scale — that's spatial control being learned. `scripts/diagnose.py` tracks it per checkpoint:
+
+![zero-conv weight magnitude vs training step](assets/zero_conv_growth.png)
+
+(Still climbing at 12k — the model is functional but not yet saturated, so there is headroom from a
+longer run.)
 
 ## Evaluation
 
 ```bash
-python scripts/evaluate.py --controlnet <ckpt>.safetensors --config configs/runpod_24gb.yaml --num-samples 100
+python scripts/evaluate.py --controlnet outputs/full/controlnet-final.safetensors --config configs/full.yaml --num-samples 100
 # control-off baseline for comparison:
-python scripts/evaluate.py --controlnet <ckpt>.safetensors --config configs/runpod_24gb.yaml \
+python scripts/evaluate.py --controlnet outputs/full/controlnet-final.safetensors --config configs/full.yaml \
     --num-samples 100 --conditioning-scale 0.0 --output outputs/eval_baseline.json
 ```
-Reports **Canny edge-F1 / SSIM** (the ControlNet-specific "did it follow the control?" metric) and
-**CLIP score**.
+Reports **Canny edge-recall / edge-F1 / SSIM** (the ControlNet-specific "did it follow the control?"
+metrics) and **CLIP score**. Regenerate the comparison chart above from the two JSON reports with
+`python scripts/plot_metrics.py`.
 
 ## Repository layout
 
@@ -111,7 +132,7 @@ Reports **Canny edge-F1 / SSIM** (the ControlNet-specific "did it follow the con
 configs/      YAML configs (local smoke / 24-32GB / A100)
 data/         datasets (gitignored) — built by scripts/prepare_coco.py
 docs/         image_requirements.md
-scripts/      prepare_coco.py · train.py · evaluate.py
+scripts/      prepare_coco.py · train.py · evaluate.py · diagnose.py · plot_metrics.py · plot_training.py
 src/
   models/     zero_conv.py · conditioning.py · controlnet.py   (the hand-written model)
   data/       dataset.py (COCO captions + on-the-fly Canny) · preprocess.py

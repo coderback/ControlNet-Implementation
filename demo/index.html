@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ControlNet from scratch: saved results gallery</title>
+<meta name="description" content="Saved outputs from a hand-written ControlNet trained on COCO: Canny condition, prompt, control off and on, parity test and training metrics. Not live inference.">
+<meta name="color-scheme" content="light dark">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Familjen+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip" href="#gallery">Skip to the gallery</a>
+<header class="top">
+  <div class="wrap top-row">
+    <span class="mark" aria-hidden="true"></span>
+    <span class="repo">ControlNet-Implementation</span>
+    <nav aria-label="Sections">
+      <a href="#gallery">Gallery</a><a href="#metrics">Metrics</a><a href="#parity">Parity</a><a href="#training">Training</a>
+      <a href="https://github.com/coderback/ControlNet-Implementation">GitHub</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+<section class="hero wrap">
+  <p class="notice"><strong>Saved outputs, not live inference.</strong> No GPU is available for this site, so nothing is generated when you visit. Every image below is cropped from a figure committed in the repo, produced by the 12k-step checkpoint.</p>
+  <h1>A ControlNet written by hand, checked against diffusers, then trained on COCO.</h1>
+  <p class="lede">ControlNet makes Stable Diffusion follow a spatial condition. This one is a from-scratch PyTorch implementation for Canny edges on a frozen SD v1.5. Pick a sample and drag the divider: both sides use the same prompt and seed, and only the control differs.</p>
+</section>
+
+<section id="gallery" class="wrap gallery" aria-labelledby="gallery-h">
+  <h2 id="gallery-h">Eight validation samples</h2>
+  <div class="strip" role="group" aria-label="Choose a sample" id="strip"></div>
+  <div class="stage">
+    <figure class="panel cond">
+      <figcaption>Input condition <span>Canny edges</span></figcaption>
+      <img id="img-cond" src="img/s0-cond.webp" width="253" height="253" alt="Canny edge map of the first sample, a table with incense burners.">
+    </figure>
+    <figure class="panel wipe-panel">
+      <figcaption><span class="tag off">Control off</span><span class="tag on">Control on</span></figcaption>
+      <div class="wipe" id="wipe" style="--pos:50%">
+        <img id="img-on" src="img/s0-on.webp" width="253" height="253" alt="Generated with control on: the layout follows the edge map.">
+        <img id="img-off" class="top-img" src="img/s0-off.webp" width="253" height="253" alt="Generated with control off, from the same prompt and seed: the layout ignores the edge map.">
+        <img id="img-overlay" class="overlay" src="img/s0-cond.webp" width="253" height="253" alt="" hidden>
+        <span class="divider" aria-hidden="true"></span>
+      </div>
+      <label class="range"><span class="sr">Divider between control off and control on</span>
+        <input type="range" id="wipe-range" min="0" max="100" value="50">
+      </label>
+      <label class="check"><input type="checkbox" id="overlay-toggle"> Lay the input edges over the result</label>
+    </figure>
+    <div class="side">
+      <figure class="panel orig">
+        <figcaption>Original photo <span id="orig-id">COCO val2017 #21465</span></figcaption>
+        <img id="img-orig" src="img/s0-orig.webp" width="253" height="253" alt="The original COCO photo the edges came from. It is never shown to the model.">
+      </figure>
+      <div class="facts">
+        <p class="label">Prompt, from the COCO caption</p>
+        <p class="prompt" id="prompt">A dirty table has incense burners on it.</p>
+        <p class="label">Edge recall <span class="hint">share of input edges reproduced</span></p>
+        <p class="recall"><span id="r-off">0.430</span> <span aria-hidden="true">→</span><span class="sr"> rises to </span> <strong id="r-on">0.856</strong></p>
+      </div>
+    </div>
+  </div>
+  <p class="source">From <code>assets/diagnostic.png</code> (<code>scripts/diagnose.py</code>: 25 steps, seed 0, scale 0 vs 1). The saved figure holds each panel at about 253 px, so that is the resolution shown. These are the first eight lines of the validation file, not a hand-picked set. Quality is mixed: layouts track the edges, while faces and small text often break down.</p>
+</section>
+
+<section id="metrics" class="wrap band" aria-labelledby="metrics-h">
+  <h2 id="metrics-h">Control on against control off</h2>
+  <p class="sub">Same trained model with <code>controlnet_conditioning_scale</code> 1 and 0. 100 COCO val2017 samples, identical seeds. From <code>outputs/eval_report.json</code> and <code>outputs/eval_baseline.json</code>.</p>
+  <div class="two">
+    <div>
+      <h3>Control lifts all three fidelity scores</h3>
+      <div id="chart-metrics" class="chart"></div>
+    </div>
+    <div>
+      <table>
+        <caption class="sr">Evaluation metrics, control on and off</caption>
+        <thead><tr><th scope="col">Metric</th><th scope="col" class="n">On</th><th scope="col" class="n">Off</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Canny edge recall (higher is better)</th><td class="n"><b>0.771</b></td><td class="n">0.363</td></tr>
+          <tr><th scope="row">Canny edge F1 (higher is better)</th><td class="n"><b>0.787</b></td><td class="n">0.338</td></tr>
+          <tr><th scope="row">Canny SSIM (higher is better)</th><td class="n"><b>0.542</b></td><td class="n">0.354</td></tr>
+          <tr><th scope="row">CLIP score (text alignment)</th><td class="n">31.55</td><td class="n">31.76</td></tr>
+          <tr><th scope="row">FID at n=100 (too noisy to rely on)</th><td class="n">173.06</td><td class="n">199.21</td></tr>
+        </tbody>
+      </table>
+      <p class="note">CLIP is essentially flat: the model follows the edges without losing prompt alignment. FID needs thousands of samples, so at 100 it is shown for the record only.</p>
+    </div>
+  </div>
+  <h3 class="mt">Every one of the eight samples improves</h3>
+  <div id="chart-recall" class="chart"></div>
+  <p class="note">Recorded per-sample values from the 8-sample diagnostic in <code>scripts/plot_training.py</code>. Hover or tab to a row for its full prompt.</p>
+</section>
+
+<section id="parity" class="wrap band" aria-labelledby="parity-h">
+  <h2 id="parity-h">Parity with diffusers</h2>
+  <div class="two">
+    <div>
+      <p>The headline test builds this ControlNet and the <code>diffusers.ControlNetModel</code> reference from the same small SD-shaped U-Net, randomises the reference weights so the zero-initialised path is not a trivial 0 = 0, copies them across, and compares every residual within a tolerance of 1e-4.</p>
+      <p>The hand-written part is the wiring in <code>src/models/controlnet.py</code>: conditioning network, cloned encoder and zero convolutions. It reuses Stable Diffusion's own block primitives, which is why parity can be this tight. The test does not use the full SD v1.5 weights.</p>
+      <p><a href="https://github.com/coderback/ControlNet-Implementation/blob/master/tests/test_parity_with_diffusers.py">Read the test on GitHub</a></p>
+    </div>
+    <div class="term" tabindex="0" role="group" aria-label="Test output from a CPU run on 3 November 2026">
+<pre><code>$ pytest tests/ -v
+test_controlnet_residuals_match_diffusers  PASSED
+test_one_training_step_runs_and_only_...   PASSED
+test_zero_conv_outputs_zero                PASSED
+test_zero_module_zeros_params              PASSED
+4 passed in 156.14s
+
+max |ours - reference|, same inputs
+6 down residuals  0.0
+mid residual      0.0
+largest residual  3.61</code></pre>
+      <p class="term-note">Run on CPU, 3 November 2026, at commit e96be02. torch 2.7.1, diffusers 0.34.0.</p>
+    </div>
+  </div>
+</section>
+
+<section id="training" class="wrap band" aria-labelledby="training-h">
+  <h2 id="training-h">Training</h2>
+  <div class="two">
+    <div>
+      <h3>Zero convolutions lift off zero, and have not finished</h3>
+      <div id="chart-zero" class="chart"></div>
+      <p class="note">Recorded by <code>scripts/diagnose.py</code> at checkpoints 2k, 4k and 12k. At 12k the control path is still about 20 to 40 times below a normal conv's scale, so the model works but has not saturated. No full loss curve is committed; the notebook describes the loss as flat and noisy at roughly 0.10 to 0.20, which is why this is the signal to watch.</p>
+    </div>
+    <div>
+      <dl class="spec">
+        <div><dt>Data</dt><dd>45k-image COCO train2017 subset</dd></div>
+        <div><dt>Steps</dt><dd>12,000 at 512²</dd></div>
+        <div><dt>Effective batch</dt><dd>16 (4 × 4 accumulation)</dd></div>
+        <div><dt>Learning rate</dt><dd>1e-5, constant, 500 warmup</dd></div>
+        <div><dt>Precision</dt><dd>bf16</dd></div>
+        <div><dt>Prompt dropout</dt><dd>50%</dd></div>
+        <div><dt>Trainable</dt><dd>361,279,120 parameters</dd></div>
+        <div><dt>Frozen U-Net</dt><dd>859,520,964 parameters</dd></div>
+      </dl>
+      <p class="note">From <code>configs/full.yaml</code> and the committed walkthrough notebook. Only Canny is trained; the other condition types are not.</p>
+    </div>
+  </div>
+  <h3 class="mt">How the control reaches the frozen model</h3>
+  <figure class="diagram">
+    <svg viewBox="0 0 760 214" role="img" aria-labelledby="dia-t"><title id="dia-t">The Canny condition goes through a conditioning network into a trainable copy of the encoder. Its outputs pass through zero convolutions and are added to the frozen Stable Diffusion U-Net's decoder.</title>
+      <defs><marker id="ah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 8 4 0 8z" class="ah"/></marker></defs>
+      <g class="d-box"><rect x="6" y="18" width="130" height="50" rx="4"/><rect x="176" y="18" width="130" height="50" rx="4"/><rect class="hot" x="346" y="18" width="180" height="50" rx="4"/><rect class="hot" x="566" y="18" width="188" height="50" rx="4"/><rect x="346" y="146" width="408" height="50" rx="4"/></g>
+      <g class="d-text"><text x="71" y="44">Canny edges</text><text x="241" y="44">Conditioning net</text><text x="436" y="44">Trainable encoder copy</text><text x="660" y="44">Zero convolutions</text><text x="550" y="172">Frozen SD v1.5 U-Net: encoder, middle, decoder</text></g>
+      <g class="d-line"><path d="M136 43H174" marker-end="url(#ah)"/><path d="M306 43H344" marker-end="url(#ah)"/><path d="M526 43H564" marker-end="url(#ah)"/><path d="M660 68V144" marker-end="url(#ah)"/></g>
+      <text class="d-small" x="650" y="110" text-anchor="end">residuals added</text>
+    </svg>
+  </figure>
+</section>
+
+<section class="wrap band" aria-labelledby="more-h">
+  <h2 id="more-h">Run it yourself</h2>
+  <p>Weights are on <a href="https://huggingface.co/Karvaxis/controlnet-canny-sd15">Hugging Face</a> and the code, notebook and configs are on <a href="https://github.com/coderback/ControlNet-Implementation">GitHub</a>. A hosted upload-your-own-photo demo needs a GPU to be usable, so it is not offered here.</p>
+  <details class="credits">
+    <summary>Image sources and licences</summary>
+    <p>Original photos and captions are from <a href="https://cocodataset.org/">COCO val2017</a>. Source and licence as listed in the COCO annotations:</p>
+    <ul id="credits"></ul>
+  </details>
+</section>
+</main>
+<footer class="wrap foot"><p>Research demo of saved results. <a href="https://github.com/coderback/ControlNet-Implementation">coderback/ControlNet-Implementation</a>, MIT. Paper: <a href="https://arxiv.org/abs/2302.05543">Zhang, Rao and Agrawala, 2023</a>.</p></footer>
+<div id="tip" class="tip" role="status" hidden></div>
+<script src="app.js"></script>
+</body>
+</html>

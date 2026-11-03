@@ -1,0 +1,106 @@
+[
+ {
+  "cocoId": 21465,
+  "prompt": "A dirty table has incense burners on it.",
+  "recallOff": 0.43,
+  "recallOn": 0.856,
+  "license": "Attribution-NonCommercial-ShareAlike License",
+  "licenseUrl": "http://creativecommons.org/licenses/by-nc-sa/2.0/",
+  "source": "http://farm1.staticflickr.com/68/172637410_5cbb86bab4_z.jpg",
+  "panel": [
+   253,
+   253
+  ]
+ },
+ {
+  "cocoId": 563281,
+  "prompt": "An old picture of a baby holding a record in his hand.",
+  "recallOff": 0.266,
+  "recallOn": 0.791,
+  "license": "Attribution-NonCommercial License",
+  "licenseUrl": "http://creativecommons.org/licenses/by-nc/2.0/",
+  "source": "http://farm3.staticflickr.com/2416/2238628414_cbe1f23da7_z.jpg",
+  "panel": [
+   253,
+   252
+  ]
+ },
+ {
+  "cocoId": 447187,
+  "prompt": "A man is swinging a bat a ball being pitched at him.",
+  "recallOff": 0.317,
+  "recallOn": 0.905,
+  "license": "Attribution License",
+  "licenseUrl": "http://creativecommons.org/licenses/by/2.0/",
+  "source": "http://farm4.staticflickr.com/3094/2684280938_a5b59c0fac_z.jpg",
+  "panel": [
+   253,
+   252
+  ]
+ },
+ {
+  "cocoId": 500464,
+  "prompt": "Bathroom with a white tiled floor and sink.",
+  "recallOff": 0.282,
+  "recallOn": 0.898,
+  "license": "Attribution-ShareAlike License",
+  "licenseUrl": "http://creativecommons.org/licenses/by-sa/2.0/",
+  "source": "http://farm5.staticflickr.com/4144/4968156547_6993db35d6_z.jpg",
+  "panel": [
+   253,
+   253
+  ]
+ },
+ {
+  "cocoId": 199771,
+  "prompt": "A group of people in chef outfits at a kitchen counter.",
+  "recallOff": 0.243,
+  "recallOn": 0.848,
+  "license": "Attribution License",
+  "licenseUrl": "http://creativecommons.org/licenses/by/2.0/",
+  "source": "http://farm6.staticflickr.com/5035/7115744429_7d4deeb996_z.jpg",
+  "panel": [
+   253,
+   252
+  ]
+ },
+ {
+  "cocoId": 65736,
+  "prompt": "A woman in black shirt and skirt playing a game of tennis.",
+  "recallOff": 0.295,
+  "recallOn": 0.779,
+  "license": "Attribution-NonCommercial-NoDerivs License",
+  "licenseUrl": "http://creativecommons.org/licenses/by-nc-nd/2.0/",
+  "source": "http://farm9.staticflickr.com/8221/8445094517_4923151564_z.jpg",
+  "panel": [
+   253,
+   252
+  ]
+ },
+ {
+  "cocoId": 429281,
+  "prompt": "a table full of bananas being sold outside",
+  "recallOff": 0.539,
+  "recallOn": 0.861,
+  "license": "Attribution-NonCommercial-NoDerivs License",
+  "licenseUrl": "http://creativecommons.org/licenses/by-nc-nd/2.0/",
+  "source": "http://farm7.staticflickr.com/6011/5990904550_b506baa087_z.jpg",
+  "panel": [
+   253,
+   253
+  ]
+ },
+ {
+  "cocoId": 202228,
+  "prompt": "The reflection of a man taking a picture in a mirror",
+  "recallOff": 0.143,
+  "recallOn": 0.887,
+  "license": "Attribution-NonCommercial-NoDerivs License",
+  "licenseUrl": "http://creativecommons.org/licenses/by-nc-nd/2.0/",
+  "source": "http://farm4.staticflickr.com/3537/3412698746_62fbea853f_z.jpg",
+  "panel": [
+   253,
+   253
+  ]
+ }
+]
